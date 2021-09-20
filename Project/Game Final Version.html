@@ -1,0 +1,470 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Dragon VS. Bricks</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+</head>
+<body onload="start()">
+    <canvas id="myCanvas" style="border:1px solid #d3d3d3;"></canvas>
+	<img id="backgroundImg" style="display:none;" src="Background Image.jpg" alt="The Sky">
+	<img id="startBackgroundImg" style="display:none;" src="Start_Background.jpg" alt="The Game">
+
+    <script>
+        var canvas = document.getElementById("myCanvas");//find the <canvas> element
+		canvas.width=$(window).width();
+		canvas.height=$(window).height()
+        var ctx = canvas.getContext("2d");//get a drawing object for the canvas
+		var img = document.getElementById("backgroundImg");
+		var startImg=document.getElementById("startBackgroundImg");
+		window.onkeyup = reactToKeyEvent;
+
+        var clicking = false;
+		var mouseDragToRight=false;
+		var mouseDragToLeft=false;
+        const numOfBrickCols = 4;
+        const maxVal = 5;
+        const minVal = 1;
+        const brickMovingSpeed = 3;
+		var dragonCircleMovingSpeed;
+		var speed;
+		var timeWhenMouseDown;
+		var brickRow;
+		var headImg = new Image(40,40);
+		headImg.src = "dragon head small.jpg";
+        headImgWidth = headImg.width;
+        headImgHeight = headImg.height;
+		var isCrashing;
+		var bricks = [];
+		var crashSound = new sound("crashSound.mp3");
+		var backgroundMusic=new sound("OUTRO- VISION_NCT.mp3");
+		var gameOverSound=new sound("Game_Over.m4a");
+		var timeIntervalFunc;
+		var requestAnimationFunc;
+		var circles = [];
+		var isGameOver=false;
+		var dragon;
+		crashSound.sound.onended = function() {
+			if(dragon.currentLength>1){
+				backgroundMusic.play();	
+			}
+		};
+
+		function Dragon(){
+				this.score=0;
+				this.redeemPoints= 0;
+				this.currentLength= 5,
+				this.headXPos=parseInt(canvas.width/2);
+				this.headYPos=parseInt(canvas.height - canvas.height/3);
+				this.bodySize= 40,
+				this.headXPosBeforeDrag=parseInt(canvas.width/2);
+		}
+		Dragon.prototype.redeemPointsForHealth=function(){
+			if (this.redeemPoints >= 2) {
+				//every 2 points redeem for 1 health
+				var deltaHealth = parseInt(this.redeemPoints / 2);
+				var pointsRedeemed = deltaHealth * 2;
+				this.currentLength += deltaHealth;
+				this.redeemPoints -= pointsRedeemed;
+			}
+		}
+		Dragon.prototype.drawDragonHead=function(){
+			ctx.drawImage(headImg,this.headXPos, this.headYPos);
+		}
+		Dragon.prototype.changeLength=function(){
+			this.currentLength = circles.length+1;
+		}
+		Dragon.prototype.drawDragonBody=function(){
+			for (var c = 1; c < this.currentLength; c++) {
+				var circle = new Circle();
+				circles[c-1]=circle;
+				circle.yAxisPosition = circle.yAxisPosition + c * this.bodySize;
+				if(circle.xAxisPosition!=dragon.headXPos){
+					if(dragonCircleMovingSpeed!=0){
+						speed=dragonCircleMovingSpeed;
+					}
+					else{
+						dragonCircleMovingSpeed=speed;
+					}
+					if(c>2){
+						if(mouseDragToRight==true){
+							circle.xAxisPosition=circle.xAxisPosition + dragonCircleMovingSpeed/ c;
+						}
+						if(mouseDragToLeft==true){
+							circle.xAxisPosition=circle.xAxisPosition - dragonCircleMovingSpeed/ c;
+						}
+					}
+					else{
+						circle.xAxisPosition=dragon.headXPos+headImgWidth/2;
+					}
+				}
+				else{
+					mouseDragToLeft=false;
+					mouseDragToRight=false;
+				}
+				//The CanvasRenderingContext2D.beginPath() method of the Canvas 2D API starts a new path by emptying the list of sub-paths. 
+				//Call this method when you want to create a new path.
+				ctx.beginPath();
+				ctx.strokeStyle="black";
+				ctx.arc(circle.xAxisPosition, circle.yAxisPosition, circle.radius, 0, 2 * Math.PI);
+				ctx.fillStyle = 'purple';//set the fill style of the drawing object to the color purple
+				ctx.fill();
+				ctx.stroke();
+			}
+		}
+
+		function start(){
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			ctx.beginPath();
+			ctx.drawImage(startImg,canvas.width*(2/3),0,canvas.width*(1/3), canvas.height);
+
+			ctx.save();
+			ctx.textAlign = "center";
+			ctx.font = "75px Comic Sans MS";
+			ctx.fillStyle="red";
+			ctx.fillText("Dragon VS. Bricks",canvas.width*(2/5),canvas.height*(1/4));
+
+			ctx.restore();
+			ctx.fillStyle="black";
+			if(!isGameOver){
+				ctx.font = "italic 40px Times New Roman";
+				ctx.fillText("Instructions:",30,canvas.height*(5/11));
+				ctx.font = "20px Times New Roman";
+				ctx.fillText("1. Left click on dragon head/body and hold it down to drag the dragon to the left or right;",10,canvas.height*(4/9)+40);
+				ctx.fillText("2. You can hit the bricks with dragon's head, but during each collision, both your health and the # value on the brick drop by one;",10,canvas.height*(4/9)+65);
+				ctx.fillText("3. You only score after you eleminate the crashing brick(i.e. make the the # value on the brick be 0);",10,canvas.height*(4/9)+90);
+				ctx.fillText("4. One value on the brick is equivalent to 1 point of your score and 1 point of the redeemable points for health;",10,canvas.height*(4/9)+115);
+				ctx.fillText("5. Every 2 redeemable points redeem for 1 health(# of health = # of circles remaining on dragon body).Once redeemed, points are subtracted;",10,canvas.height*(4/9)+140);
+				ctx.fillText("6. Game over when you have 0 health.",10,canvas.height*(4/9)+165);
+			}
+			else{
+				backgroundMusic.stop();
+				console.log("BGM:"+backgroundMusic.sound.paused);
+				gameOverSound.play();
+				console.log("Game-over Sound:"+gameOverSound.sound.paused);
+				ctx.textAlign = "center";
+				ctx.font = "bolder 60px Times New Roman";
+				ctx.fillText("GAME OVER! Your final score is "+ dragon.score + ".",canvas.width*(2/5),canvas.height*(6/11));
+				ctx.fillText("Wanna play again???",canvas.width*(2/5),canvas.height*(5/9)+60);
+			}
+
+			ctx.restore();
+			ctx.textAlign = "center";
+			ctx.fillStyle = "blue";
+			ctx.font = "30px Verdana";
+			ctx.stroke();
+			ctx.fillText("PRESS 'G' TO START THE GAME!!",canvas.width*(2/5),canvas.height*(8/9));
+			ctx.restore();
+		}
+
+		function reactToKeyEvent(e) {
+                e.preventDefault();
+                var key = e.which;
+                if (key == 71) {
+                    startGame();
+                }
+        }
+
+		var animate = () => {
+		    ctx.clearRect(0, 0, canvas.width, canvas.height);
+			requestAnimationFunc=requestAnimationFrame(animate);
+			ctx.drawImage(img,0,0,canvas.width, canvas.height);
+			dragon.redeemPointsForHealth();
+			dragon.drawDragonHead();
+			dragon.drawDragonBody();
+			for (var r = 0; r < bricks.length; r++) {
+				for (var c = 0; c < bricks[r].length; c++) {
+					if (bricks[r][c].needToBeDrawn) {
+						bricks[r][c].drawRect();
+						bricks[r][c].drawText();
+					}
+				}
+			}
+			ctx.beginPath();
+			ctx.strokeStyle="white";
+			ctx.rect(0, 0, 380, 100);
+			ctx.stroke();
+			ctx.font = "bold 30px Comic Sans MS";
+			ctx.textAlign = "center";
+			ctx.fillStyle = "red";
+			ctx.fillText("Your Score:" + dragon.score, 140, 30);
+			ctx.fillStyle = "green";
+			ctx.fillText("Your Health:" + (dragon.currentLength - 1), 140, 60);
+			ctx.fillStyle = "magenta";
+			ctx.fillText("Accumulated Points: " + dragon.redeemPoints, 190, 90);
+        };
+
+		function animationOfBricks(){
+            var previousRowYPos = updateBricksPosition();
+            if (previousRowYPos >= Brick.prototype.height+100) {
+                createBricksRow();
+            }
+		}
+
+		function startGame(){
+			backgroundMusic.sound.currentTime=0;
+			backgroundMusic.sound.loop=true;
+			backgroundMusic.play();
+			dragon=new Dragon();
+			circles = [];
+			bricks = [];
+			isGameOver=false;
+			createBricksRow();
+            animate();
+			timeIntervalFunc=setInterval(function(){animationOfBricks()}, 50);
+			console.log("timeIntervalFunc:"+timeIntervalFunc);
+		}
+		
+        //https://blog.lavrton.com/hit-region-detection-for-html5-canvas-and-how-to-listen-to-click-events-on-canvas-shapes-815034d7e9f8
+        //https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/clientX
+        //https://medium.com/@jagadeshanh/html5-canvas-click-and-draw-f665e02f5744
+        function isIntersect(point, circle) {
+			var isIntersect=false;
+            var isIntersectWithBody = (Math.sqrt(Math.pow((point.x - circle.xAxisPosition),2) + Math.pow((point.y - circle.yAxisPosition),2)) < circle.radius);
+			var isIntersectWithHead= point.x>=dragon.headXPos && point.x<=(dragon.headXPos+headImgWidth) && point.y>=dragon.headYPos && point.y<=(dragon.headXPos+headImgHeight);
+			if(isIntersectWithBody||isIntersectWithHead){
+				isIntersect=true;
+			}
+			return isIntersect;
+        }
+        canvas.addEventListener('mousedown', (e) => {
+            var mousePointPos = {
+                x: e.clientX,
+                y: e.clientY
+            };
+            circles.forEach(circle => {
+                if (isIntersect(mousePointPos, circle)) {
+                    clicking = true;
+					timeWhenMouseDown=Date.now();
+                }
+            });
+        });
+
+        canvas.onmouseup = function (e) {
+            clicking = false;
+        };
+
+        canvas.onmousemove = function (e) {
+            if (clicking == false)
+                return;
+            else {
+				if(e.clientX>dragon.headXPos){//mouse move to the right
+					mouseDragToRight=true;
+				}
+				else if(e.clientX<dragon.headXPos){
+					mouseDragToLeft=true;
+				}
+				var dtTime=Date.now()-timeWhenMouseDown;
+				var dtDistance=e.clientX-dragon.headXPos;
+				dragonCircleMovingSpeed=Math.round(dtDistance / dtTime * 100) / 50;
+				dragon.headXPosBeforeDrag=dragon.headXPos;
+                dragon.headXPos = e.clientX;
+            }
+        };
+
+        function Circle() {
+		    this.xAxisPosition = dragon.headXPosBeforeDrag + headImgWidth/2;//the x-coordinate of the center of the circle
+            this.yAxisPosition = dragon.headYPos + headImgHeight;//the y-coordinate of the center of the circle
+            this.radius = dragon.bodySize / 2;
+        }
+		
+
+		function Brick(brickX, brickY, val,backgroundColor) {
+            this.x = brickX;
+            this.y = brickY;
+            this.value = val;
+            this.originalValue = val;
+			this.needToBeDrawn=true;
+            this.textColor = "#000000";
+            this.color = backgroundColor;
+        }
+        Brick.prototype.width = Math.floor(canvas.width / 25);
+		Brick.prototype.height = Math.floor(canvas.height/25);
+		Brick.prototype.moveBrick=function(){
+			this.y += brickMovingSpeed;
+		};
+		Brick.prototype.drawRect=function(){
+			ctx.beginPath();
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.rect(this.x, this.y, this.width, this.height);
+			ctx.stroke();
+		};
+		Brick.prototype.drawText=function(){
+			ctx.font = "30px Comic Sans MS";
+			ctx.fillStyle = this.textColor;
+			ctx.textAlign = "center";
+			ctx.fillText(this.value, this.x+(Brick.prototype.width/2), this.y+(Brick.prototype.height/2)+10);
+		};
+
+		function createBricksRow(){
+			var numOfBricksOnEachRow=parseInt(generateRandomNumber(1,numOfBrickCols));
+			brickRow=new Array(numOfBricksOnEachRow);
+            var previousXPos = [];
+            var isOverlapped = true;
+			var notOverlapCounter;
+			var brickXPos;
+			var brickYPos=0;
+            var val;
+            var backgroundColor;
+
+			for(var cc=0;cc<numOfBricksOnEachRow;cc++){
+				notOverlapCounter=0;
+				brickXPos = parseInt(generateRandomNumber(canvas.width-Brick.prototype.width));
+                if (previousXPos[0] != null) {//first brick in the row can't be overlapping with any other bricks in the row
+					while(isOverlapped){
+                        previousXPos.forEach(function (element){
+							if (((brickXPos + Brick.prototype.width) <= element) || ((brickXPos - Brick.prototype.width) >= element)) {
+								notOverlapCounter++;
+							}
+							else {
+								console.log("IS OVERLAPPING");
+							}
+						});	
+						if(notOverlapCounter==previousXPos.length){//not overlapping with any of the existing X-Positions of bricks on the same row
+							isOverlapped = false;				//valid X-Position found, exit the loop
+						}
+						else{
+							isOverlapped = true;			
+							brickXPos = parseInt(generateRandomNumber(canvas.width - Brick.prototype.width));//is overlapping! generate a new brick X-Position!
+						}
+						notOverlapCounter = 0;//if valid x-pos found, start validation for next brick on this row, else validate the re-generated x-pos for the same brick
+					}
+				}
+                previousXPos.push(brickXPos);
+                isOverlapped = true;//set back to default for validation of next brick on this row
+                val = parseInt(generateRandomNumber(maxVal, minVal));
+                if (val <= 2) {
+                    backgroundColor = "#00FFBF";
+                }
+                else if (val > 3) {
+                    backgroundColor = "#FE9A2E";
+                }
+                else {
+                    backgroundColor = "#F5A9A9";
+                }
+                brickRow[cc] = new Brick(brickXPos, brickYPos, val, backgroundColor);//fill the brick row with bricks
+            }
+            bricks.push(brickRow);
+		}
+
+		function updateBricksPosition(){
+			var r;
+            var c;
+            var rowDeleted = false;
+			var isCrashing;
+			for(r=0;r<bricks.length;r++){
+                for (c = 0; c < bricks[r].length; c++){
+                    rowDeleted = deleteOutOfBoundsBricks(bricks[r][c]);
+                    if (rowDeleted) {
+                        r = -1;
+                        break;
+                    }
+                    else {
+						isCrashing=detactCrash(r, c);
+						if (!isCrashing) {
+							bricks[r][c].moveBrick();
+                            bricks[r][c].textColor ="#000000";
+						}
+						else{
+                            bricks[r][c].textColor ="#FF0000";
+						}
+                    }
+                }
+            }
+            return bricks[bricks.length-1][0].y;
+		}
+
+        function deleteOutOfBoundsBricks(brick) {
+            var rowOutOfCanvas = false;
+			if(brick.y>=canvas.height){
+                rowOutOfCanvas = true;
+			}
+            if (rowOutOfCanvas) {
+				bricks.shift();
+            }
+            return rowOutOfCanvas;
+		}
+		
+		function detactCrash(r,c){
+			var brickY = bricks[r][c].y;
+			var brickLowerY = brickY+Brick.prototype.height;
+			var brickX = bricks[r][c].x;
+			var minX = dragon.headXPos-Brick.prototype.width;
+			var maxX = dragon.headXPos+headImgWidth+Brick.prototype.width;
+			var isCrashing=false;
+			bricks[r][c].needToBeDrawn=true;
+			
+			if( ( ( brickLowerY == dragon.headYPos ) || ( brickLowerY == dragon.headYPos+1 ) ) && ( ( brickX >= minX ) && ( brickX <= maxX ) ) ){
+				isCrashing=true;
+				if(dragon.currentLength-1>bricks[r][c].value){
+					if(bricks[r][c].value>0){
+						isCrashing=true;
+					}
+					else{
+                        isCrashing = false;
+                        dragon.score += bricks[r][c].originalValue;
+                        dragon.redeemPoints = dragon.redeemPoints + bricks[r][c].originalValue;
+					}
+				}
+				else{
+                    if (dragon.currentLength == 1) {
+						isGameOver=true;
+						cancelAnimationFrame( requestAnimationFunc );
+						clearInterval(timeIntervalFunc);
+						start();
+					}
+					else{
+						isCrashing=true;
+					}
+				}
+				if(isCrashing){
+					console.log("isGameOver:"+isGameOver);
+					backgroundMusic.stop();
+				    crashSound.play();
+					bricks[r][c].value--;
+					circles.pop();
+					dragon.changeLength();			
+					console.log("currentLength:"+dragon.currentLength);
+				}
+			}
+			else{
+                isCrashing = false;
+                if (bricks[r][c].value == 0) {
+                    bricks[r][c].needToBeDrawn = false;
+                }
+			}
+			return isCrashing;
+		}
+
+        //https://medium.com/mindorks/creating-a-random-number-generator-in-javascript-5dfc6f7a3bee
+        function generateRandomNumber(max,min=0) {
+			var result;
+			if(min==0){
+				result=Math.floor(Math.random() * (max+1));
+			}
+			else{
+				result=Math.floor(Math.random() * max) + min; 
+			}
+            return result;
+        }
+
+		//https://www.w3schools.com/graphics/game_sound.asp
+		function sound(src) {
+			this.sound = document.createElement("audio");
+			this.sound.src = src;
+			this.sound.setAttribute("preload", "auto");
+			this.sound.setAttribute("controls", "none");
+			this.sound.style.display = "none";
+			document.body.appendChild(this.sound);
+			this.play = function(){
+				this.sound.play();
+			}
+			this.stop = function(){
+				this.sound.pause();
+			} 
+		}
+    </script>
+</body>
+</html>
